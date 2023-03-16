@@ -1,4 +1,4 @@
-# Context-Aware_Crowd_Counting-pytorch
+# Context-Aware_Crowd_Counting-distributed-pytorch
 This is an simple and clean unoffical implemention of CVPR 2019 paper ["Context-Aware Crowd Counting"](https://arxiv.org/pdf/1811.10452.pdf).  
 # Installation
 &emsp;1. Install pytorch 1.0.0 later and python 3.6 later  
