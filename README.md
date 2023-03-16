@@ -22,4 +22,8 @@ Dropbox: [link](https://www.dropbox.com/s/fipgjqxl7uj8hd5/ShanghaiTech.zip?dl=0)
 &emsp;1. Modify the root path in "test.py" according to your dataset position.  
 &emsp;2. Run test.py for calculate MAE of test images or just show an estimated density-map.  
 # Other notes
-we got the comparable MAE at the 353 epoch [BaiduDisk download with Extraction code: yfwb](https://pan.baidu.com/s/1Y-nnVQoZgmgNjpHhE4y--Q) or [Dropbox Link](https://www.dropbox.com/s/do3yf8hs841exha/cvpr2019_CAN_SHHA_353.pth?dl=0) which is reported in paper. Thanks for the author's(Weizhe Liu) response by email. His mainpage is [link](https://sites.google.com/view/weizheliu/home).# 
+
+
+# reference 
+[Context-Aware_Crowd_Counting-pytorch](https://github.com/CommissarMa/Context-Aware_Crowd_Counting-pytorch)
+the comparable MAE at the 353 epoch [BaiduDisk download with Extraction code: yfwb](https://pan.baidu.com/s/1Y-nnVQoZgmgNjpHhE4y--Q) or [Dropbox Link](https://www.dropbox.com/s/do3yf8hs841exha/cvpr2019_CAN_SHHA_353.pth?dl=0) which is reported in paper. Thanks for the author's(Weizhe Liu) response by email. His mainpage is [link](https://sites.google.com/view/weizheliu/home)
