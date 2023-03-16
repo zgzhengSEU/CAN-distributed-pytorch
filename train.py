@@ -3,6 +3,7 @@ import torch
 import os
 from tqdm import tqdm as tqdm
 import time
+import random
 
 from model.CANNet import CANNet
 from model.CrowdDatase import CrowdDataset
@@ -10,10 +11,12 @@ from utils.distributed_utils import init_distributed_mode, dist, cleanup
 from utils.train_eval_utils import train_one_epoch, evaluate
 
 import argparse
-from torch.utils.tensorboard import SummaryWriter
+
 import tempfile
 import math
 import torch.optim.lr_scheduler as lr_scheduler
+
+import wandb
 
 
 def main(args):
@@ -26,14 +29,17 @@ def main(args):
     init_checkpoint = args.init_checkpoint
     args.lr *= args.world_size  # 学习率要根据并行GPU的数量进行倍增
     temp_init_checkpoint_path = "checkpoints"
-
+    use_wandb = args.wandb
+    show_images = args.show
+    
     if rank == 0:  # 在第一个进程中打印信息，并实例化tensorboard
         print("train start!", time.strftime('%Y.%m.%d %H:%M:%S', time.localtime(time.time())))
         print(args)
-        print('Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/')
-        tb_writer = SummaryWriter()
+
         if os.path.exists(temp_init_checkpoint_path) is False:
             os.makedirs(temp_init_checkpoint_path)
+        if use_wandb:    
+            wandb.init(project="VisDrone", group="CAN", mode="offline")
 
     # DataPath Shanghai_part_A
     # train_image_root = args.data_root + 'train_data/images'
@@ -161,12 +167,27 @@ def main(args):
 
             print("[epoch {}] mae: {}, min_mae: {}, min_epoch: {}".format(
                 epoch, mean_mae, min_mae, min_epoch))
-            tags = ["loss", "accuracy", "learning_rate"]
-            tb_writer.add_scalar(tags[0], mean_loss, epoch)
-            tb_writer.add_scalar(tags[1], mean_mae, epoch)
-            tb_writer.add_scalar(
-                tags[2], optimizer.param_groups[0]["lr"], epoch)
+            if use_wandb: 
+                wandb.log({'loss': mean_loss})
+                wandb.log({'mae': mean_mae})
+                wandb.log({'lr': optimizer.param_groups[0]["lr"]})
+            
+            # show an image
+            if show_images:
+                images = []
+                index=random.randint(0,len(test_loader)-1)
+                img, gt_dmap=test_dataset[index]
 
+                images.append(wandb.Image(img, caption=f"image {epoch}"))
+                images.append(wandb.Image(gt_dmap/(gt_dmap.max())*255, caption=f"gt_density {epoch}"))
+
+                img=img.unsqueeze(0).to(device)
+                gt_dmap=gt_dmap.unsqueeze(0)
+                et_dmap=model(img)
+                et_dmap=et_dmap.squeeze(0).detach().cpu().numpy()
+                images.append(wandb.Image(et_dmap/(et_dmap.max())*255, caption=f"gt_density {epoch}"))
+                wandb.log({"examples" : [wandb.Image(im) for im in images]})
+                
     if rank == 0:
         print("train done!", time.strftime('%Y.%m.%d %H:%M:%S', time.localtime(time.time())))
    
@@ -179,6 +200,8 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-7)
     parser.add_argument('--lrf', type=float, default=0.1)
     parser.add_argument('--syncBN', type=bool, default=True)
+    parser.add_argument('--wandb', type=bool, default=True)
+    parser.add_argument('--show', type=bool, default=True)
     parser.add_argument('--data_root', type=str,
                         default="./data/Shanghai_part_A/")
     parser.add_argument('--init_checkpoint', type=str, default='./checkpoints/cvpr2019_CAN_SHHA_353.pth',
