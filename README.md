@@ -12,12 +12,16 @@ git clone https://github.com/zgzhengSEU/CAN-distributed-pytorch.git
 ```
 We'll call the directory that you cloned CAN-distributed-pytorch as ROOT.
 # Data Setup
-&emsp;1. Download ShanghaiTech Dataset from
-Dropbox: [link](https://www.dropbox.com/s/fipgjqxl7uj8hd5/ShanghaiTech.zip?dl=0) or Baidu Disk: [link](http://pan.baidu.com/s/1nuAYslz)  
+&emsp;1. Download ShanghaiTech Dataset
 &emsp;2. Put ShanghaiTech Dataset in ROOT and use "data_preparation/k_nearest_gaussian_kernel.py" to generate ground truth density-map. (Mind that you need modify the root_path in the main function of "data_preparation/k_nearest_gaussian_kernel.py")  
 # Training
 &emsp;1. Modify the root path in "train.py" according to your dataset position.  
 &emsp;2. Run train.py
+```
+CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distributed.launch --nproc_per_node=you_gpu_num --use_env train.py
+CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distributed.launch --nproc_per_node=4 --use_env train.py
+CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --nproc_per_node=1 --use_env train.py
+```
 # Testing
 &emsp;1. Modify the root path in "test.py" according to your dataset position.  
 &emsp;2. Run test.py for calculate MAE of test images or just show an estimated density-map.  

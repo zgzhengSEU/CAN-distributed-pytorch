@@ -1,0 +1,7 @@
+# Usage: pip install -r requirements.txt
+torch>=1.0.0  
+tqdm
+tensorboard
+matplotlib
+numpy
+h5py

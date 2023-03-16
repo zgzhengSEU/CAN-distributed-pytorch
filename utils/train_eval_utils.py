@@ -3,7 +3,7 @@ import sys
 from tqdm import tqdm
 import torch
 
-from distributed_utils import reduce_value, is_main_process
+from .distributed_utils import reduce_value, is_main_process
 
 
 def train_one_epoch(model,
@@ -13,7 +13,7 @@ def train_one_epoch(model,
                     epoch):
     model.train()
 
-    criterion = torch.nn.MSELoss(size_average=False).to(device)
+    criterion = torch.nn.MSELoss(reduction='sum').to(device)
 
     mean_loss = torch.zeros(1).to(device)
     optimizer.zero_grad()
