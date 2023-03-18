@@ -3,9 +3,6 @@ import torch
 import os
 from tqdm import tqdm as tqdm
 import time
-import random
-from matplotlib import pyplot as plt
-import cv2
 
 from model.CANNet import CANNet
 from model.CrowdDataset import CrowdDataset
@@ -13,11 +10,7 @@ from utils.distributed_utils import init_distributed_mode, dist, cleanup
 from utils.train_eval_utils import train_one_epoch, evaluate
 
 import argparse
-
 import tempfile
-import math
-import torch.optim.lr_scheduler as lr_scheduler
-
 import wandb
 
 
