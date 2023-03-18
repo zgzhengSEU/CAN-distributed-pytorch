@@ -4,9 +4,11 @@ import os
 from tqdm import tqdm as tqdm
 import time
 import random
+from matplotlib import pyplot as plt
+import cv2
 
 from model.CANNet import CANNet
-from model.CrowdDatase import CrowdDataset
+from model.CrowdDataset import CrowdDataset
 from utils.distributed_utils import init_distributed_mode, dist, cleanup
 from utils.train_eval_utils import train_one_epoch, evaluate
 
@@ -31,15 +33,24 @@ def main(args):
     temp_init_checkpoint_path = "checkpoints"
     use_wandb = args.wandb
     show_images = args.show
-    
+
     if rank == 0:  # 在第一个进程中打印信息，并实例化tensorboard
-        print("train start!", time.strftime('%Y.%m.%d %H:%M:%S', time.localtime(time.time())))
+        curtime = time.strftime(
+            '%Y.%m.%d %H:%M:%S', time.localtime(time.time()))
+        print(f"[train start! {curtime}]")
         print(args)
 
         if os.path.exists(temp_init_checkpoint_path) is False:
             os.makedirs(temp_init_checkpoint_path)
-        if use_wandb:    
-            wandb.init(project="VisDrone", group="CAN", mode="offline")
+        if os.path.exists('checkpoints/temp/') is False:
+            os.makedirs('checkpoints/temp/')
+        if use_wandb:
+            wandb.init(
+                project="VisDrone",
+                group="CAN",
+                mode="online",
+                # resume='allow',
+                name='CANNet')
 
     # DataPath Shanghai_part_A
     # train_image_root = args.data_root + 'train_data/images'
@@ -60,12 +71,12 @@ def main(args):
     epochs = args.epochs
     num_workers = 1
     seed = time.time()
-    
+
     # ======================== cuda ====================================
-    
+
     device = torch.device(gpu_or_cpu)
     torch.cuda.manual_seed(seed)
-    
+
     # ==================================== dataloader ==================
     train_dataset = CrowdDataset(
         train_image_root, train_dmap_root, gt_downsample=8, phase='train')
@@ -80,33 +91,28 @@ def main(args):
     train_batch_sampler = torch.utils.data.BatchSampler(
         train_sampler, batch_size, drop_last=False)
 
-    if rank == 0:
-        print('Using {} dataloader workers every process'.format(num_workers))
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_sampler=train_batch_sampler)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset,
-                                               batch_sampler=train_batch_sampler)
-
-    test_loader = torch.utils.data.DataLoader(test_dataset,
-                                              sampler=test_sampler,
-                                              num_workers=num_workers,
-                                              batch_size=batch_size,
-                                              shuffle=False)
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset, sampler=test_sampler, num_workers=num_workers, batch_size=batch_size, shuffle=False)
     
+    if rank == 0:
+        print(f'[Using {num_workers} dataloader workers every process]')
     # ========================================= model ===========================
     model = CANNet().to(device)
 
     if os.path.exists(init_checkpoint):
-        if rank == 0:
-            print('load checkpoint from {}'.format(init_checkpoint))
         weights_dict = torch.load(init_checkpoint, map_location=device)
-        load_weights_dict = {k: v for k, v in weights_dict.items()
-                             if model.state_dict()[k].numel() == v.numel()}
-        model.load_state_dict(load_weights_dict, strict=False)
+        model.load_state_dict(weights_dict, strict=False)
+        if rank == 0:
+            print(f'[rank {rank} load checkpoint from {init_checkpoint}]')
     else:
         temp_init_checkpoint_path = os.path.join(
             tempfile.gettempdir(), "initial_weights.pth")
         # 如果不存在预训练权重，需要将第一个进程中的权重保存，然后其他进程载入，保持初始化权重一致
         if rank == 0:
+            print(f"[Use Temp Init Checkpoint: {temp_init_checkpoint_path}]")
             torch.save(model.state_dict(), temp_init_checkpoint_path)
 
         dist.barrier()
@@ -124,13 +130,8 @@ def main(args):
 
     # ===================================== optimizer ===========================================
     pg = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(pg, lr,
-                                momentum=momentum,
-                                weight_decay=0)
+    optimizer = torch.optim.SGD(pg, lr, momentum=momentum, weight_decay=0)
 
-    def lf(x): return ((1 + math.cos(x * math.pi / args.epochs)) / 2) * \
-        (1 - args.lrf) + args.lrf  # cosine
-    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
     # optimizer=torch.optim.Adam(model.parameters(),lr)
 
     # ========================================= train and eval ============================================
@@ -139,6 +140,7 @@ def main(args):
     for epoch in range(0, epochs):
         train_sampler.set_epoch(epoch)
 
+        # training phase
         mean_loss = train_one_epoch(
             model=model,
             optimizer=optimizer,
@@ -147,55 +149,38 @@ def main(args):
             epoch=epoch
         )
 
-        scheduler.step()
-
         # testing phase
         mae_sum = evaluate(
             model=model,
             test_loader=test_loader,
             device=device,
-            epoch=epoch
+            epoch=epoch,
+            show_images=show_images,
+            use_wandb=use_wandb
         )
 
         if rank == 0:
-            mean_mae = mae_sum / len(test_loader)
+            # eval and log
+            mean_mae = mae_sum / test_sampler.total_size
             if mean_mae < min_mae:
                 min_mae = mean_mae
                 min_epoch = epoch
                 torch.save(model.state_dict(),
-                           './checkpoints/epoch_{}.pth'.format(epoch))
+                           f'./checkpoints/epoch_{epoch}.pth')
 
-            print("[epoch {}] mae: {}, min_mae: {}, min_epoch: {}".format(
-                epoch, mean_mae, min_mae, min_epoch))
-            if use_wandb: 
+            print(
+                f"[epoch {epoch}] mae: {mean_mae}, min_mae: {min_mae}, min_epoch: {min_epoch}")
+
+            if use_wandb:
                 wandb.log({'loss': mean_loss})
                 wandb.log({'mae': mean_mae})
                 wandb.log({'lr': optimizer.param_groups[0]["lr"]})
-            
-            # show an image
-            if show_images:
-                images = []
-                index=random.randint(0,len(test_loader)-1)
-                img, gt_dmap=test_dataset[index]
+                print(f"[epoch {epoch}] wandb log done!")
 
-                images.append(wandb.Image(img, caption=f"image {epoch}"))
-                images.append(wandb.Image(gt_dmap/(gt_dmap.max())*255, caption=f"gt_density {epoch}"))
-
-                img=img.unsqueeze(0).to(device)
-                gt_dmap=gt_dmap.unsqueeze(0)
-                et_dmap=model(img)
-                et_dmap=et_dmap.squeeze(0).detach().cpu().numpy()
-                images.append(wandb.Image(et_dmap/(et_dmap.max())*255, caption=f"gt_density {epoch}"))
-                wandb.log({"examples" : [wandb.Image(im) for im in images]})
-                
-    if rank == 0:
-        print("train done!", time.strftime('%Y.%m.%d %H:%M:%S', time.localtime(time.time())))
-   
-    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--lr', type=float, default=1e-7)
     parser.add_argument('--lrf', type=float, default=0.1)
@@ -204,7 +189,7 @@ if __name__ == "__main__":
     parser.add_argument('--show', type=bool, default=True)
     parser.add_argument('--data_root', type=str,
                         default="./data/Shanghai_part_A/")
-    parser.add_argument('--init_checkpoint', type=str, default='./checkpoints/cvpr2019_CAN_SHHA_353.pth',
+    parser.add_argument('--init_checkpoint', type=str, default='./checkpoints/epoch_26.pth',
                         help='initial weights path')
     # 不要改该参数，系统会自动分配
     parser.add_argument('--device', default='cuda',

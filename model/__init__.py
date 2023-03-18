@@ -1,4 +1,4 @@
 from .CANNet import CANNet
-from .CrowdDatase import CrowdDataset
+from .CrowdDataset import CrowdDataset
 
 __all__ = ['CANNet', 'CrowdDataset']

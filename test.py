@@ -4,7 +4,7 @@ import matplotlib.cm as CM
 from tqdm import tqdm
 
 from model.CANNet import CANNet
-from model.CrowdDatase import CrowdDataset
+from model.CrowdDataset import CrowdDataset
 
 
 def cal_mae(img_root, gt_dmap_root, model_param_path):
